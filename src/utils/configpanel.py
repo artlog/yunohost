@@ -387,7 +387,7 @@ class ConfigPanelModel(BaseModel):
                     yield (panel, section, None)
                 if "action" in trigger:
                     for option in section.options:
-                        if option.type is OptionType.button:
+                        if option.type == OptionType.button:
                             yield (panel, section, option)
                 if "option" in trigger:
                     for option in section.options:
@@ -572,7 +572,7 @@ class ConfigPanel:
                             result[key]["value"] = option.humanize(
                                 self.form[option.id], option
                             )
-                            if option.type is OptionType.password:
+                            if option.type == OptionType.password:
                                 result[key]["value"] = (
                                     "**************"  # Prevent displaying password in `config get`
                                 )
@@ -585,6 +585,7 @@ class ConfigPanel:
         value: Any = None,
         args: str | None = None,
         args_file: str | None = None,
+        verbose: bool = True,
         operation_logger: Union["OperationLogger", None] = None,
     ) -> None:
         self.filter_key = parse_filter_key(key)
@@ -618,6 +619,7 @@ class ConfigPanel:
             self.form,
             prefilled_answers=prefilled_answers,
             hooks=self.hooks,
+            verbose=verbose
         )
 
         if operation_logger:
@@ -806,7 +808,7 @@ class ConfigPanel:
             if isinstance(option, BaseInputOption) and option.id not in raw_settings:
                 if option.default is not None:
                     value = option.default
-                elif option.type is OptionType.file or option.bind == "null":
+                elif option.type == OptionType.file or option.bind == "null":
                     continue
                 elif self.settings_must_be_defined:
                     raise YunohostError(
@@ -875,12 +877,13 @@ class ConfigPanel:
         prefilled_answers: dict[str, Any] = {},
         action_id: str | None = None,
         hooks: "Hooks" = {},
+        verbose: bool = True
     ) -> "FormModel":
         # FIXME could be turned into a staticmethod
         logger.debug("Ask unanswered question and prevalidate data")
 
         interactive = Moulinette.interface.type == "cli" and os.isatty(1)
-        verbose = action_id is None or len(list(config.options)) > 1
+        verbose = verbose and (action_id is None or len(list(config.options)) > 1)
 
         if interactive:
             config.translate()
@@ -911,7 +914,7 @@ class ConfigPanel:
                 options = [
                     option
                     for option in section.options
-                    if option.type is not OptionType.button or option.id == action_id
+                    if option.type != OptionType.button or option.id == action_id
                 ]
 
                 form = prompt_or_validate_form(

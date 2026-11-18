@@ -16,14 +16,16 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
-import binascii
-import os
+import secrets
+import string
 import textwrap
 
 
 def random_ascii(length: int = 40) -> str:
-    """Return a random ascii string"""
-    return binascii.hexlify(os.urandom(length)).decode("ascii")[:length]
+    """Return a random ascii a-zA-Z0-9 string"""
+    return "".join(
+        secrets.choice(string.ascii_letters + string.digits) for _ in range(length)
+    )
 
 
 def send_admin_email(from_addr: str, subject: str, content: str) -> None:
@@ -33,6 +35,7 @@ def send_admin_email(from_addr: str, subject: str, content: str) -> None:
             From: {from_addr}
             To: {to_addr}
             Subject: {subject}
+            Content-Type: text/plain; charset=utf-8
 
         """)
         + content

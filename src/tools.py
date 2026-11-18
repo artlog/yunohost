@@ -154,6 +154,7 @@ def tools_postinstall(
     from .dyndns import _dyndns_available, dyndns_unsubscribe
     from .permission import _set_system_perms
     from .service import _run_service_command
+    from .settings import settings_set
     from .user import ADMIN_ALIASES, user_create
     from .utils.app_utils import _ask_confirmation
     from .utils.dns import is_yunohost_dyndns_domain
@@ -300,6 +301,24 @@ def tools_postinstall(
 
     # Enable and start YunoHost firewall at boot time
     _run_service_command("enable", "nftables")
+
+    # Adjust tmpfs configuration
+    ram = psutil.virtual_memory()
+    ram_total = round(ram.total / 1024.0 / 1024.0)
+    if ram_total >= 4096:
+        tmpfs_max_size = round(ram_total * 0.25)
+        logger.info(m18n.n("tmpfs_configuration", ram=tmpfs_max_size))
+        logger.info(m18n.n("tmpfs_configuration_help"))
+
+        # FIXME: currently we have a bug with setting a unique attribute with visible
+        # so i use here a workaround to be sure all the context is loaded
+        # see: https://github.com/YunoHost/issues/issues/2483
+        settings_set("misc.storage",
+                     args=f"tmpfs_max_size={tmpfs_max_size}M&tmpfs_enabled=yes",
+                     verbose=False)
+    else:
+        logger.info(m18n.n("tmpfs_deactivation"))
+        logger.info(m18n.n("tmpfs_configuration_help"))
 
     tools_regen_conf(names=["ssh"], force=True)
 
@@ -804,6 +823,7 @@ def tools_migrations_run(
     auto: bool = False,
     force_rerun: bool = False,
     accept_disclaimer: bool = False,
+    skip_postmigrations: bool = False,
 ) -> None:
     """
     Perform migrations
@@ -813,6 +833,7 @@ def tools_migrations_run(
     --auto         Automatic mode, won't run manual migrations (to be used only if you know what you are doing)
     --force-rerun  Re-run already-ran migrations (to be used only if you know what you are doing)(must explicit which migrations)
     --accept-disclaimer  Accept disclaimers of migrations (please read them before using this option) (only valid for one migration)
+    --skip-postmigrations  Don't automatically run the following migrations if any. Especially useful to not run the migrations following a Debian version bump and run them manually instead (to be used only if you know what you are doing)
     """
 
     all_migrations = _get_migrations_list()
@@ -910,6 +931,8 @@ def tools_migrations_run(
         # Start register change on system
         operation_logger = OperationLogger("tools_migrations_migrate_forward")
         operation_logger.start()
+
+        migration.skip_postmigrations = skip_postmigrations
 
         if skip:
             logger.warning(m18n.n("migrations_skip_migration", id=migration.id))
@@ -1090,11 +1113,15 @@ class Migration:
 
     state: Literal["pending", "done", "skipped"] | None = None
     mode: Literal["auto", "manual"] = "auto"
+
     # List of migration ids required before running this migration
     dependencies: list[str] = []
 
     # For migrations that have @ldap_migration
     ldap_migration_started = False
+
+    # To skip the automatic run of the migrations following up the current one
+    skip_postmigrations: bool = False
 
     @property
     def disclaimer(self) -> str | None:
